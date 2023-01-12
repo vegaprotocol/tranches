@@ -43,6 +43,7 @@ var (
 
 	vestingContractAddress = common.HexToAddress("0x23d1bFE8fA50a167816fBD79D7932577c06011f4")
 	pollEventRetryDuration = 14 * time.Second // pretty much how long it takes to build a block
+	pollNewState           = time.Minute      // no need to poll too often
 )
 
 func init() {
@@ -65,12 +66,41 @@ type User struct {
 	AddedLogs   []BalanceMovementLog `json:"added_logs"`
 }
 
+func (u *User) IntoResponse() *UserResponse {
+	removedLogs := make([]BalanceMovementLogResponse, 0, len(u.RemovedLogs))
+	for _, v := range u.RemovedLogs {
+		removedLogs = append(removedLogs, v.IntoResponse())
+	}
+
+	addedLogs := make([]BalanceMovementLogResponse, 0, len(u.AddedLogs))
+	for _, v := range u.AddedLogs {
+		addedLogs = append(addedLogs, v.IntoResponse())
+	}
+
+	return &UserResponse{
+		TranchID:    u.TranchID,
+		Balance:     u.Balance.String(),
+		AddedLogs:   addedLogs,
+		RemovedLogs: removedLogs,
+	}
+}
+
 type BalanceMovementLog struct {
 	TrancheID   uint8          `json:"tranche_id"`
 	Address     common.Address `json:"address"`
 	TxHash      string         `json:"tx_hash"`
 	Amount      *big.Int       `json:"amount"`
 	BlockNumber uint64         `json:"block_number"`
+}
+
+func (b *BalanceMovementLog) IntoResponse() BalanceMovementLogResponse {
+	return BalanceMovementLogResponse{
+		TrancheID:   b.TrancheID,
+		Address:     b.Address,
+		TxHash:      b.TxHash,
+		Amount:      b.Amount.String(),
+		BlockNumber: b.BlockNumber,
+	}
 }
 
 type State struct {
@@ -98,49 +128,24 @@ func NewState(clt *ethclient.Client) *State {
 		log.Fatalf("couldn't load collateral bridge ABI: %v", err)
 	}
 
+	tranches := map[uint8]*Tranche{}
+	// these seems to exists without creating them
+	for _, v := range []uint8{0, 154, 110, 107, 66} {
+		tranches[v] = &Tranche{
+			InitialBalance: big.NewInt(0),
+			CurrentBalance: big.NewInt(0),
+			CliffStart:     big.NewInt(0),
+			Duration:       big.NewInt(0),
+			Users:          map[common.Address]*User{},
+		}
+	}
+
 	return &State{
 		clt:      clt,
 		filterer: filterer,
 		abi:      abi,
-		store: map[uint8]*Tranche{
-			0: {
-				InitialBalance: big.NewInt(0),
-				CurrentBalance: big.NewInt(0),
-				CliffStart:     big.NewInt(0),
-				Duration:       big.NewInt(0),
-				Users:          map[common.Address]*User{},
-			},
-			154: {
-				InitialBalance: big.NewInt(0),
-				CurrentBalance: big.NewInt(0),
-				CliffStart:     big.NewInt(0),
-				Duration:       big.NewInt(0),
-				Users:          map[common.Address]*User{},
-			},
-			110: {
-				InitialBalance: big.NewInt(0),
-				CurrentBalance: big.NewInt(0),
-				CliffStart:     big.NewInt(0),
-				Duration:       big.NewInt(0),
-				Users:          map[common.Address]*User{},
-			},
-			107: {
-				InitialBalance: big.NewInt(0),
-				CurrentBalance: big.NewInt(0),
-				CliffStart:     big.NewInt(0),
-				Duration:       big.NewInt(0),
-				Users:          map[common.Address]*User{},
-			},
-			66: {
-				InitialBalance: big.NewInt(0),
-				CurrentBalance: big.NewInt(0),
-				CliffStart:     big.NewInt(0),
-				Duration:       big.NewInt(0),
-				Users:          map[common.Address]*User{},
-			},
-		},
+		store:    tranches,
 	}
-
 }
 
 func (s *State) CurrentHeight(ctx context.Context) uint64 {
@@ -341,7 +346,7 @@ func (s *State) CatchupSinceDeployment() {
 }
 
 func (s *State) PullForever() {
-	ticker := time.NewTicker(pollEventRetryDuration)
+	ticker := time.NewTicker(pollNewState)
 	for range ticker.C {
 		if newHeight := s.CurrentHeight(context.Background()); newHeight > s.lastHeightPulled {
 			from, to := s.lastHeightPulled+1, newHeight
@@ -360,7 +365,22 @@ func (s *State) PullForever() {
 }
 
 type UserByAddressResponse struct {
-	Tranches map[uint8]*User `json:"tranches"`
+	Tranches map[uint8]*UserResponse `json:"tranches"`
+}
+
+type UserResponse struct {
+	TranchID    uint8                        `json:"tranch_id"`
+	Balance     string                       `json:"balance"`
+	RemovedLogs []BalanceMovementLogResponse `json:"removed_logs"`
+	AddedLogs   []BalanceMovementLogResponse `json:"added_logs"`
+}
+
+type BalanceMovementLogResponse struct {
+	TrancheID   uint8          `json:"tranche_id"`
+	Address     common.Address `json:"address"`
+	TxHash      string         `json:"tx_hash"`
+	Amount      string         `json:"amount"`
+	BlockNumber uint64         `json:"block_number"`
 }
 
 func (s *State) GetUserByAddress(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -374,7 +394,7 @@ func (s *State) GetUserByAddress(w http.ResponseWriter, r *http.Request, ps http
 	}
 
 	ethAddress := common.HexToAddress(address)
-	tranches := map[uint8]*User{}
+	tranches := map[uint8]*UserResponse{}
 
 	for k, v := range s.store {
 		user, ok := v.Users[ethAddress]
@@ -382,7 +402,7 @@ func (s *State) GetUserByAddress(w http.ResponseWriter, r *http.Request, ps http
 			// this user is not in this tranche, move on
 			continue
 		}
-		tranches[k] = user
+		tranches[k] = user.IntoResponse()
 	}
 
 	writeOK(w, UserByAddressResponse{Tranches: tranches})
