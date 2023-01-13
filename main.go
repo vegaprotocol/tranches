@@ -9,7 +9,6 @@ import (
 	"log"
 	"math/big"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -41,7 +40,7 @@ var (
 	port                   uint
 	ethereumRPC            string
 	vestingContractAddress string
-	deploymentHeightStr    string
+	deploymentHeight       uint64
 
 	pollEventRetryDuration = 14 * time.Second // pretty much how long it takes to build a block
 	pollNewState           = time.Minute      // no need to poll too often
@@ -50,8 +49,8 @@ var (
 func init() {
 	flag.UintVar(&port, "port", 1789, "port of the http server")
 	flag.StringVar(&ethereumRPC, "eth-rpc", "", "ethereum RPC address")
-	flag.StringVar(&vestingContractAddress, "vesting-contract-address", "", "vesting contract address")
-	flag.StringVar(&deploymentHeightStr, "deployment-height", "", "deployment block height")
+	flag.StringVar(&vestingContractAddress, "vesting-contract-address", "0x23d1bFE8fA50a167816fBD79D7932577c06011f4", "vesting contract address")
+	flag.Uint64Var(&deploymentHeight, "deployment-height", 12834524, "deployment block height")
 }
 
 type Tranche struct {
@@ -314,17 +313,13 @@ func (s *State) parseEvent(l ethtypes.Log) {
 }
 
 func (s *State) CatchupSinceDeployment() {
-	deploymentHeight, err := strconv.ParseUint(deploymentHeightStr, 10, 64)
-	if err != nil {
-		log.Fatalf("couldn't parse block height: %v", err)
-	}
 	var (
 		from   = deploymentHeight
 		to     = deploymentHeight
 		height = s.CurrentHeight(context.Background())
 	)
 
-	log.Printf("catching up state from contract deployment(%v) to current ethereum height(%v)", deploymentHeightStr, height)
+	log.Printf("catching up state from contract deployment(%v) to current ethereum height(%v)", deploymentHeight, height)
 
 	for {
 		from, to = to, to+catchupBlocksSize
@@ -454,17 +449,8 @@ func main() {
 		log.Fatal("error: missing eth-rpc parameter")
 	}
 
-	if len(vestingContractAddress) <= 0 {
-		log.Fatal("error: missing vesting-contract-address parameter")
-	}
-
-	if len(deploymentHeightStr) <= 0 {
-		log.Fatal("error: missing deployment-height parameter")
-	}
-
-	if len(deploymentHeightStr) <= 0 {
-		log.Fatal("error: missing deployment-height parameter")
-	}
+	log.Printf("Using vesting contract address: %v", vestingContractAddress)
+	log.Printf("Using deployment block height: %v", deploymentHeight)
 
 	ethClient, err := ethclient.DialContext(context.Background(), ethereumRPC)
 	if err != nil {
