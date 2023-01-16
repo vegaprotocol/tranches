@@ -26,7 +26,6 @@ import (
 )
 
 const (
-	deploymentHeight  uint64 = 12834524
 	catchupBlocksSize uint64 = 50000
 )
 
@@ -38,10 +37,11 @@ const (
 )
 
 var (
-	port        uint
-	ethereumRPC string
+	port                   uint
+	ethereumRPC            string
+	vestingContractAddress string
+	deploymentHeight       uint64
 
-	vestingContractAddress = common.HexToAddress("0x23d1bFE8fA50a167816fBD79D7932577c06011f4")
 	pollEventRetryDuration = 14 * time.Second // pretty much how long it takes to build a block
 	pollNewState           = time.Minute      // no need to poll too often
 )
@@ -49,6 +49,8 @@ var (
 func init() {
 	flag.UintVar(&port, "port", 1789, "port of the http server")
 	flag.StringVar(&ethereumRPC, "eth-rpc", "", "ethereum RPC address")
+	flag.StringVar(&vestingContractAddress, "vesting-contract-address", "0x23d1bFE8fA50a167816fBD79D7932577c06011f4", "vesting contract address")
+	flag.Uint64Var(&deploymentHeight, "deployment-height", 12834524, "deployment block height")
 }
 
 type Tranche struct {
@@ -118,7 +120,7 @@ type State struct {
 }
 
 func NewState(clt *ethclient.Client) *State {
-	filterer, err := contracts.NewERC20VestingFilterer(vestingContractAddress, clt)
+	filterer, err := contracts.NewERC20VestingFilterer(common.HexToAddress(vestingContractAddress), clt)
 	if err != nil {
 		log.Fatalf("couldn't create log filterer for ERC20 brigde: %v", err)
 	}
@@ -171,11 +173,12 @@ func (s *State) CurrentHeight(ctx context.Context) uint64 {
 }
 
 func (s *State) newQuery(startAt uint64, stopAt uint64) ethereum.FilterQuery {
+	hexAddress := common.HexToAddress(vestingContractAddress)
 	query := ethereum.FilterQuery{
 		FromBlock: new(big.Int).SetUint64(startAt),
 		ToBlock:   new(big.Int).SetUint64(stopAt),
 		Addresses: []common.Address{
-			vestingContractAddress,
+			hexAddress,
 		},
 		Topics: [][]common.Hash{{
 			s.abi.Events[trancheCreated].ID,
@@ -310,7 +313,6 @@ func (s *State) parseEvent(l ethtypes.Log) {
 }
 
 func (s *State) CatchupSinceDeployment() {
-
 	var (
 		from   = deploymentHeight
 		to     = deploymentHeight
@@ -446,6 +448,9 @@ func main() {
 	if len(ethereumRPC) <= 0 {
 		log.Fatal("error: missing eth-rpc parameter")
 	}
+
+	log.Printf("Using vesting contract address: %v", vestingContractAddress)
+	log.Printf("Using deployment block height: %v", deploymentHeight)
 
 	ethClient, err := ethclient.DialContext(context.Background(), ethereumRPC)
 	if err != nil {
