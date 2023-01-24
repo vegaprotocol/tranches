@@ -22,6 +22,7 @@ import (
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/julienschmidt/httprouter"
+	"github.com/rs/cors"
 	"golang.org/x/exp/maps"
 )
 
@@ -471,14 +472,13 @@ func main() {
 	router.GET("/tranches/stats", state.GetTranchesStats)
 
 	go state.PullForever()
+	handler := cors.Default().Handler(router)
 
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), router))
-
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), handler))
 }
 
 func writeOK(w http.ResponseWriter, payload interface{}) {
-	w.Header().Set("Access-Control-Allow-Methods", w.Header().Get("Allow"))
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+
 	w.Header().Set("Content-Type", "application/json")
 	buf, err := json.Marshal(payload)
 	if err != nil {
