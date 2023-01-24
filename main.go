@@ -466,6 +466,7 @@ func main() {
 	log.Printf("starting http API on port: %v", port)
 
 	router := httprouter.New()
+
 	router.GET("/user/:address", state.GetUserByAddress)
 	router.GET("/tranches/stats", state.GetTranchesStats)
 
@@ -476,6 +477,8 @@ func main() {
 }
 
 func writeOK(w http.ResponseWriter, payload interface{}) {
+	w.Header().Set("Access-Control-Allow-Methods", w.Header().Get("Allow"))
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
 	buf, err := json.Marshal(payload)
 	if err != nil {
