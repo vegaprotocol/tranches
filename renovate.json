@@ -1,0 +1,7 @@
+{
+    "description": "This file is automatically managed by github.com/vegaprotocol/terraform//github",
+    "extends": [
+        "config:base"
+    ],
+    "packageRules": []
+}
