@@ -20,6 +20,7 @@ jobs:
           fetch-depth: 0
           repository: vegaprotocol/k8s
           path: k8s
+          token: ${{ secrets.GH_TOKEN }}
       - run: |
           
           version=$(git describe --tags --abbrev=0)
