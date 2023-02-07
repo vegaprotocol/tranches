@@ -1,11 +1,6 @@
 name: "Continous Delivery Workflow"
 "on":
-  workflow_call:
-    secrets:
-      DOCKERHUB_USERNAME:
-        required: true
-      DOCKERHUB_TOKEN:
-        required: true
+  workflow_call: {}
 
 env:
   GO_VERSION: "1.19.0"
