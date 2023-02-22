@@ -7,6 +7,6 @@ WORKDIR /go/src/project
 ADD . .
 RUN env CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static"' -o tranches .
 
-FROM busybox:1.34
+FROM alpine:${ALPINE_VERSION}
 COPY --from=builder /go/src/project/tranches /
 ENTRYPOINT ["/tranches"]
